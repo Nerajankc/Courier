@@ -4,6 +4,7 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Upload from "./pages/Upload.jsx";
 import Search from "./pages/Search.jsx";
+import TrackingRegister from "./pages/TrackingRegister.jsx";
 
 function ProtectedRoute({ children, userType }) {
   const token = localStorage.getItem("token");
@@ -26,6 +27,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/admin" element={<TrackingRegister />} />
         <Route
           path="/upload"
           element={

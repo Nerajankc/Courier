@@ -3,6 +3,16 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.database import Base
 
+class TrackingInfo(Base):
+    __tablename__ = "tracking_info"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tracking_number = Column(String, unique=True, nullable=False, index=True)
+    pickup_date = Column(String, nullable=False)
+    source_location = Column(String, nullable=False)
+    destination_location = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class User(Base):
     __tablename__ = "users"
 
@@ -30,12 +40,16 @@ class CourierData(Base):
     __tablename__ = "courier_data"
 
     id = Column(Integer, primary_key=True, index=True)
-    courier_description_user = Column(Text, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    courier_description_user = Column(Text, nullable=True)  # Made optional
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Made optional for admin uploads
     courier_description_ai = Column(Text, nullable=True)
-    product_image = Column(String, nullable=False)
+    product_image = Column(String, nullable=True)  # Made optional
     product_name = Column(String, nullable=False)
     product_category = Column(String, nullable=False)
+    tracking_number = Column(String, nullable=True, index=True)
+    pickup_date = Column(String, nullable=True)
+    source_location = Column(String, nullable=True)
+    destination_location = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="courier_data")

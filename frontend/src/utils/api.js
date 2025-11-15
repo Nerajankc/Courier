@@ -24,3 +24,10 @@ api.interceptors.request.use((config) => {
 
 export default api
 
+// Search for products
+export const searchProducts = async (searchDescription) => {
+  const response = await api.post('/requests/search', {
+    search_description: searchDescription,
+  })
+  return response.data
+}

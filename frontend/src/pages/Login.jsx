@@ -34,7 +34,17 @@ function Login() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>Login</h1>
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center",
+          marginBottom: "24px"
+        }}>
+          <div>
+            <h1 style={{ marginBottom: "8px" }}>Welcome Back</h1>
+            <p className="subtitle" style={{ margin: 0 }}>Sign in to your UPS Overgood Finder account</p>
+          </div>
+        </div>
         <form onSubmit={handleLogin}>
           <div className="form-group">
             <label>Email</label>
@@ -61,6 +71,11 @@ function Login() {
         </form>
         <div className="link">
           Don't have an account? <Link to="/register">Register here</Link>
+        </div>
+        <div className="link" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
+          <Link to="/admin" style={{ color: "#a0a0b0", fontSize: "13px" }}>
+            🔧 Admin Panel
+          </Link>
         </div>
       </div>
     </div>

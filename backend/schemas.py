@@ -2,6 +2,22 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional, List
 
+class TrackingInfoBase(BaseModel):
+    tracking_number: str
+    pickup_date: str
+    source_location: str
+    destination_location: str
+
+class TrackingInfoCreate(TrackingInfoBase):
+    pass
+
+class TrackingInfoResponse(TrackingInfoBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class UserBase(BaseModel):
     fullname: str
     email: EmailStr
@@ -41,18 +57,22 @@ class UserRequestResponse(UserRequestBase):
         from_attributes = True
 
 class CourierDataBase(BaseModel):
-    courier_description_user: str
+    courier_description_user: Optional[str] = None
     product_name: str
     product_category: str
+    tracking_number: Optional[str] = None
+    pickup_date: Optional[str] = None
+    source_location: Optional[str] = None
+    destination_location: Optional[str] = None
 
 class CourierDataCreate(CourierDataBase):
     pass
 
 class CourierDataResponse(CourierDataBase):
     id: int
-    user_id: int
+    user_id: Optional[int]  # Made optional for admin uploads
     courier_description_ai: Optional[str]
-    product_image: str
+    product_image: Optional[str]
     created_at: datetime
 
     class Config:
@@ -66,7 +86,29 @@ class ProductMatch(BaseModel):
 
 class SearchRequest(BaseModel):
     search_description: str
+    tracking_number: Optional[str] = None
+    pickup_date: Optional[str] = None
+    source_location: Optional[str] = None
+    destination_location: Optional[str] = None
 
 class SearchResponse(BaseModel):
     matches: List[ProductMatch]
     total_found: int
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: Optional[List[ChatMessage]] = []
+    tracking_number: Optional[str] = None
+    pickup_date: Optional[str] = None
+    source_location: Optional[str] = None
+    destination_location: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    message: str
+    needs_tracking_info: bool = False
+    has_results: bool = False
+    matches: Optional[List[ProductMatch]] = None

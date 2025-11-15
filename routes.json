@@ -1,0 +1,63 @@
+[
+  {
+    "route_id": "R001",
+    "route_name": "West Coast Express",
+    "stops": ["Los Angeles", "San Francisco", "Portland", "Seattle"],
+    "regions": ["California", "Oregon", "Washington"]
+  },
+  {
+    "route_id": "R002",
+    "route_name": "Southern Corridor",
+    "stops": ["Los Angeles", "Phoenix", "Albuquerque", "Dallas", "Houston"],
+    "regions": ["California", "Arizona", "New Mexico", "Texas"]
+  },
+  {
+    "route_id": "R003",
+    "route_name": "Mountain Route",
+    "stops": ["Denver", "Salt Lake City", "Boise", "Spokane"],
+    "regions": ["Colorado", "Utah", "Idaho", "Washington"]
+  },
+  {
+    "route_id": "R004",
+    "route_name": "Cross Country",
+    "stops": ["Los Angeles", "Phoenix", "Albuquerque", "Oklahoma City", "Little Rock", "Memphis", "Nashville", "Atlanta"],
+    "regions": ["California", "Arizona", "New Mexico", "Oklahoma", "Arkansas", "Tennessee", "Georgia"]
+  },
+  {
+    "route_id": "R005",
+    "route_name": "Northeast Corridor",
+    "stops": ["Boston", "New York", "Philadelphia", "Baltimore", "Washington DC"],
+    "regions": ["Massachusetts", "New York", "Pennsylvania", "Maryland", "District of Columbia"]
+  },
+  {
+    "route_id": "R006",
+    "route_name": "Midwest Express",
+    "stops": ["Chicago", "Milwaukee", "Minneapolis", "Des Moines", "Omaha", "Kansas City"],
+    "regions": ["Illinois", "Wisconsin", "Minnesota", "Iowa", "Nebraska", "Missouri"]
+  },
+  {
+    "route_id": "R007",
+    "route_name": "Great Plains",
+    "stops": ["Denver", "Colorado Springs", "Pueblo", "Amarillo", "Lubbock", "Midland"],
+    "regions": ["Colorado", "Texas"]
+  },
+  {
+    "route_id": "R008",
+    "route_name": "Southeast Loop",
+    "stops": ["Atlanta", "Birmingham", "Jackson", "New Orleans", "Mobile", "Pensacola", "Tallahassee"],
+    "regions": ["Georgia", "Alabama", "Mississippi", "Louisiana", "Florida"]
+  },
+  {
+    "route_id": "R009",
+    "route_name": "Pacific Northwest",
+    "stops": ["Seattle", "Tacoma", "Olympia", "Portland", "Eugene", "Medford"],
+    "regions": ["Washington", "Oregon"]
+  },
+  {
+    "route_id": "R010",
+    "route_name": "California Connector",
+    "stops": ["San Diego", "Los Angeles", "Bakersfield", "Fresno", "San Jose", "San Francisco", "Sacramento"],
+    "regions": ["California"]
+  }
+]
+

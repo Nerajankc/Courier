@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from backend.routers import users, requests, couriers
+from backend.routers import users, requests, couriers, tracking
 from backend.database import init_db
 from dotenv import load_dotenv
 import os
@@ -32,6 +32,7 @@ async def startup_event():
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(requests.router, prefix="/requests", tags=["Requests"])
 app.include_router(couriers.router, prefix="/couriers", tags=["Couriers"])
+app.include_router(tracking.router, prefix="/tracking", tags=["Tracking"])
 
 @app.get("/")
 def read_root():

@@ -43,7 +43,8 @@ function Register() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>Register</h1>
+        <h1>Create Account</h1>
+        <p className="subtitle">Join UPS Overgood Finder to get started</p>
         <form onSubmit={handleRegister}>
           <div className="form-group">
             <label>Full Name</label>
@@ -76,10 +77,10 @@ function Register() {
             />
           </div>
           <div className="form-group">
-            <label>User Type</label>
+            <label>Account Type</label>
             <select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="find">Find (Search for lost products)</option>
-              <option value="courier">Courier (Upload found products)</option>
+              <option value="find">Customer - Search for my lost item</option>
+              <option value="courier">UPS Staff - Upload found items (overgoods)</option>
             </select>
           </div>
           {error && <div className="error">{error}</div>}
@@ -87,6 +88,11 @@ function Register() {
         </form>
         <div className="link">
           Already have an account? <Link to="/">Login here</Link>
+        </div>
+        <div className="link" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
+          <Link to="/admin" style={{ color: "#a0a0b0", fontSize: "13px" }}>
+            🔧 Admin Panel
+          </Link>
         </div>
       </div>
     </div>
