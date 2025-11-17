@@ -60,6 +60,7 @@ class CourierDataBase(BaseModel):
     courier_description_user: Optional[str] = None
     product_name: str
     product_category: str
+    image_description: Optional[str] = None
     tracking_number: Optional[str] = None
     pickup_date: Optional[str] = None
     source_location: Optional[str] = None
@@ -68,11 +69,24 @@ class CourierDataBase(BaseModel):
 class CourierDataCreate(CourierDataBase):
     pass
 
+class ClaimedByUser(BaseModel):
+    id: int
+    fullname: str
+    email: str
+    
+    class Config:
+        from_attributes = True
+
 class CourierDataResponse(CourierDataBase):
     id: int
     user_id: Optional[int]  # Made optional for admin uploads
     courier_description_ai: Optional[str]
+    image_description: Optional[str]
     product_image: Optional[str]
+    claimed: str = "unclaimed"
+    claimed_by_user_id: Optional[int] = None
+    claimed_at: Optional[datetime] = None
+    claimed_by: Optional[ClaimedByUser] = None
     created_at: datetime
 
     class Config:

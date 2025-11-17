@@ -55,13 +55,6 @@ async def upload_courier_data_public(
         admin_user = db.query(models.User).filter(models.User.type == "courier").first()
         user_id = admin_user.id if admin_user else None
         
-        print(f"DEBUG: Creating CourierData with:")
-        print(f"  user_id: {user_id}")
-        print(f"  product_name: {product_name}")
-        print(f"  product_category: {product_category}")
-        print(f"  tracking_number: {tracking_number}")
-        print(f"  file_path: {file_path}")
-        
         db_courier = models.CourierData(
             courier_description_user=courier_description_user or "",
             user_id=user_id,  # Can be None for admin uploads
@@ -85,9 +78,6 @@ async def upload_courier_data_public(
         # Clean up uploaded file if database save fails
         if file_path and file_path != "no_image.jpg" and os.path.exists(file_path):
             os.remove(file_path)
-        print(f"ERROR saving courier data: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save courier data: {type(e).__name__}: {str(e)}"
@@ -198,4 +188,42 @@ def get_product(
         )
     
     return product
+
+@router.delete("/products/{product_id}")
+def delete_product(
+    product_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a courier's product"""
+    if current_user.type != "courier":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only courier users can delete products"
+        )
+    
+    product = db.query(models.CourierData).filter(
+        models.CourierData.id == product_id,
+        models.CourierData.user_id == current_user.id
+    ).first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found or you don't have permission to delete it"
+        )
+    
+    # Delete product image if exists
+    if product.product_image and product.product_image != "no_image.jpg":
+        try:
+            import os
+            if os.path.exists(product.product_image):
+                os.remove(product.product_image)
+        except Exception:
+            pass  # File deletion is non-critical
+    
+    db.delete(product)
+    db.commit()
+    
+    return {"message": "Product deleted successfully"}
 

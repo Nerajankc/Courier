@@ -24,7 +24,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     requests = relationship("UserRequest", back_populates="user")
-    courier_data = relationship("CourierData", back_populates="user")
+    courier_data = relationship("CourierData", back_populates="user", foreign_keys="CourierData.user_id")
 
 class UserRequest(Base):
     __tablename__ = "user_requests"
@@ -43,6 +43,7 @@ class CourierData(Base):
     courier_description_user = Column(Text, nullable=True)  # Made optional
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Made optional for admin uploads
     courier_description_ai = Column(Text, nullable=True)
+    image_description = Column(Text, nullable=True)  # AI description from customer search images
     product_image = Column(String, nullable=True)  # Made optional
     product_name = Column(String, nullable=False)
     product_category = Column(String, nullable=False)
@@ -50,6 +51,10 @@ class CourierData(Base):
     pickup_date = Column(String, nullable=True)
     source_location = Column(String, nullable=True)
     destination_location = Column(String, nullable=True)
+    claimed = Column(String, default="unclaimed")  # unclaimed, claimed
+    claimed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    claimed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", back_populates="courier_data")
+    user = relationship("User", back_populates="courier_data", foreign_keys=[user_id])
+    claimed_by = relationship("User", foreign_keys=[claimed_by_user_id])

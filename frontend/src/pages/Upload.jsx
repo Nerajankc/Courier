@@ -15,14 +15,104 @@ function Upload() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [activeTab, setActiveTab] = useState("upload");
+  const [myItems, setMyItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [trackingInfoFetched, setTrackingInfoFetched] = useState(false);
+  const [fetchingTracking, setFetchingTracking] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (!localStorage.getItem("token") || user.type !== "courier") {
       navigate("/");
+    } else {
+      // Fetch items on mount to show count in tab badge
+      fetchMyItems();
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (activeTab === "myitems") {
+      // Refresh items when switching to My Items tab
+      fetchMyItems();
+    }
+  }, [activeTab]);
+
+  const fetchMyItems = async () => {
+    setLoadingItems(true);
+    try {
+      const response = await api.get("/couriers/my-products");
+      setMyItems(response.data);
+    } catch (err) {
+      console.error("Failed to fetch items:", err);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
+  const handleDeleteItem = async (itemId) => {
+    if (!window.confirm("Are you sure you want to delete this item?")) {
+      return;
+    }
+
+    try {
+      await api.delete(`/couriers/products/${itemId}`);
+      // Refresh items list
+      fetchMyItems();
+      setSuccess("Item deleted successfully!");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      setError("Failed to delete item. Please try again.");
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  const fetchTrackingInfo = async (trackingNum) => {
+    if (!trackingNum.trim()) {
+      setTrackingInfoFetched(false);
+      setPickupDate("");
+      setSourceLocation("");
+      setDestinationLocation("");
+      return;
+    }
+
+    setFetchingTracking(true);
+    try {
+      const response = await api.get(`/tracking/${trackingNum.trim()}`);
+      // Auto-populate fields from tracking info
+      setPickupDate(response.data.pickup_date);
+      setSourceLocation(response.data.source_location);
+      setDestinationLocation(response.data.destination_location);
+      setTrackingInfoFetched(true);
+      setError("");
+    } catch (err) {
+      // Tracking number not found - don't allow upload
+      setTrackingInfoFetched(false);
+      setError("⚠️ Tracking number not registered. You cannot report item with invalid tracking number.");
+    } finally {
+      setFetchingTracking(false);
+    }
+  };
+
+  const handleTrackingNumberChange = (e) => {
+    const value = e.target.value;
+    setTrackingNumber(value);
+    // Clear auto-fetched flag and error when user modifies tracking number
+    if (trackingInfoFetched) {
+      setTrackingInfoFetched(false);
+    }
+    if (error) {
+      setError("");
+    }
+  };
+
+  const handleTrackingNumberBlur = () => {
+    if (trackingNumber.trim()) {
+      fetchTrackingInfo(trackingNumber);
+    }
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -69,7 +159,11 @@ function Upload() {
       setDestinationLocation("");
       setProductImage(null);
       setPreview(null);
+      setTrackingInfoFetched(false);
       e.target.reset();
+      
+      // Refresh items list to update count badge
+      fetchMyItems();
     } catch (err) {
       setError(err.response?.data?.detail || "Upload failed. Please try again.");
     } finally {
@@ -86,71 +180,87 @@ function Upload() {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f0f0f" }}>
+    <div style={{ minHeight: "100vh", background: "#f5f7fa" }}>
+      {/* Header */}
       <div style={{
-        background: "rgba(26, 26, 46, 0.95)",
-        backdropFilter: "blur(20px)",
+        background: "#ffffff",
         padding: "16px 32px",
-        borderBottom: "1px solid rgba(255,255,255,0.1)",
+        borderBottom: "1px solid #e5e7eb",
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "center"
+        alignItems: "center",
+        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{
-            width: "40px",
-            height: "40px",
-            background: "linear-gradient(135deg, #5865f2 0%, #7c3aed 100%)",
-            borderRadius: "12px",
+            width: "36px",
+            height: "36px",
+            background: "#5865f2",
+            borderRadius: "8px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "20px",
-            fontWeight: "bold"
+            color: "#ffffff",
+            fontSize: "18px",
+            fontWeight: "700"
           }}>
             U
           </div>
           <div>
-            <h2 style={{ margin: 0, color: "#ffffff", fontSize: "18px", fontWeight: "600" }}>
+            <h2 style={{ margin: 0, color: "#111827", fontSize: "16px", fontWeight: "600" }}>
               UPS Overgood Finder
             </h2>
-            <p style={{ margin: 0, color: "#a0a0b0", fontSize: "12px" }}>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "12px" }}>
               Upload Found Items
             </p>
           </div>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <span style={{ color: "#a0a0b0", fontSize: "14px" }}>
-            Welcome, {user.fullname}
-          </span>
-          <button
-            onClick={() => navigate("/admin")}
-            style={{
-              padding: "8px 20px",
-              background: "rgba(88, 101, 242, 0.2)",
-              color: "#5865f2",
-              border: "1px solid rgba(88, 101, 242, 0.3)",
-              borderRadius: "10px",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "14px",
-              transition: "all 0.2s"
-            }}
-          >
-            Admin Panel
-          </button>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "6px 12px",
+            background: "#f9fafb",
+            borderRadius: "8px",
+            border: "1px solid #e5e7eb"
+          }}>
+            <div style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #5865f2 0%, #7c3aed 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#ffffff",
+              fontWeight: "700",
+              fontSize: "14px"
+            }}>
+              {user.fullname?.charAt(0).toUpperCase() || "U"}
+            </div>
+            <span style={{ color: "#111827", fontSize: "14px", fontWeight: "500" }}>
+              {user.fullname}
+            </span>
+          </div>
           <button
             onClick={handleLogout}
             style={{
-              padding: "8px 20px",
-              background: "rgba(255, 255, 255, 0.05)",
-              color: "#ffffff",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              borderRadius: "10px",
+              padding: "8px 16px",
+              background: "#ffffff",
+              color: "#374151",
+              border: "1px solid #d1d5db",
+              borderRadius: "6px",
               cursor: "pointer",
-              fontWeight: "600",
+              fontWeight: "500",
               fontSize: "14px",
               transition: "all 0.2s"
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = "#f9fafb";
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = "#ffffff";
             }}
           >
             Logout
@@ -158,106 +268,708 @@ function Upload() {
         </div>
       </div>
 
-      <div className="upload-form">
-        <h2>Upload Found Overgood (UPS Item)</h2>
-        <form onSubmit={handleUpload}>
-          <div className="form-group">
-            <label>Tracking Number (if available)</label>
-            <input
-              type="text"
-              placeholder="e.g., 1Z999AA10123456784"
-              value={trackingNumber}
-              onChange={(e) => setTrackingNumber(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Pickup/Ship Date</label>
-            <input
-              type="date"
-              value={pickupDate}
-              onChange={(e) => setPickupDate(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Source Location</label>
-            <input
-              type="text"
-              placeholder="e.g., Los Angeles, CA"
-              value={sourceLocation}
-              onChange={(e) => setSourceLocation(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Destination Location</label>
-            <input
-              type="text"
-              placeholder="e.g., Seattle, WA"
-              value={destinationLocation}
-              onChange={(e) => setDestinationLocation(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Item Name</label>
-            <input
-              type="text"
-              placeholder="e.g., Black iPhone 13"
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>Item Category</label>
-            <input
-              type="text"
-              placeholder="e.g., Electronics, Clothing, Accessories"
-              value={productCategory}
-              onChange={(e) => setProductCategory(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>Your Description (Optional)</label>
-            <textarea
-              placeholder="Describe the item as you found it... (AI will analyze image if provided)"
-              value={courierDescription}
-              onChange={(e) => setCourierDescription(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Item Image (Optional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-            />
-            {preview && (
-              <div className="upload-preview">
-                <img src={preview} alt="Preview" />
+      {/* Tab Navigation */}
+      <div style={{
+        background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb"
+      }}>
+        <div style={{
+          maxWidth: "900px",
+          margin: "0 auto",
+          padding: "0 24px",
+          display: "flex",
+          gap: "0"
+        }}>
+          <button
+            onClick={() => setActiveTab("upload")}
+            style={{
+              padding: "16px 24px",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "upload" ? "2px solid #5865f2" : "2px solid transparent",
+              color: activeTab === "upload" ? "#5865f2" : "#6b7280",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            📝 Report an Item
+          </button>
+          <button
+            onClick={() => setActiveTab("myitems")}
+            style={{
+              padding: "16px 24px",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "myitems" ? "2px solid #5865f2" : "2px solid transparent",
+              color: activeTab === "myitems" ? "#5865f2" : "#6b7280",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px"
+            }}
+          >
+            📋 Previously Reported Items
+            {myItems.length > 0 && (
+              <span style={{
+                background: "#eef2ff",
+                color: "#5865f2",
+                padding: "2px 8px",
+                borderRadius: "12px",
+                fontSize: "12px",
+                fontWeight: "700"
+              }}>
+                {myItems.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div style={{
+        maxWidth: "900px",
+        margin: "0 auto",
+        padding: "32px 24px"
+      }}>
+        {activeTab === "upload" ? (
+          <div style={{
+            background: "#ffffff",
+            borderRadius: "12px",
+            padding: "32px",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
+          }}>
+            {/* Header */}
+            <div style={{ marginBottom: "24px" }}>
+              <h2 style={{ 
+                margin: "0 0 8px 0", 
+                color: "#111827", 
+                fontSize: "20px", 
+                fontWeight: "700" 
+              }}>
+                Upload Found Item
+              </h2>
+              <p style={{
+                margin: 0,
+                color: "#6b7280",
+                fontSize: "14px",
+                lineHeight: "1.5"
+              }}>
+                Add details about the found item to help customers locate their packages
+              </p>
+            </div>
+
+            <form onSubmit={handleUpload}>
+            {/* Tracking Number Field */}
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                color: "#374151",
+                fontSize: "14px",
+                fontWeight: "500",
+                marginBottom: "6px"
+              }}>
+                Tracking Number (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., 1Z999AA10123456784"
+                value={trackingNumber}
+                onChange={handleTrackingNumberChange}
+                onBlur={handleTrackingNumberBlur}
+                disabled={fetchingTracking}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  color: "#111827",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "all 0.2s"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#5865f2";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.boxShadow = "none";
+                  handleTrackingNumberBlur();
+                }}
+              />
+              {fetchingTracking && (
+                <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "12px" }}>
+                  🔄 Fetching tracking info...
+                </p>
+              )}
+            </div>
+
+            {/* Show Tracking Info Summary if fetched */}
+            {trackingInfoFetched && (
+              <div style={{
+                marginBottom: "16px",
+                padding: "14px 16px",
+                background: "#f0fdf4",
+                borderRadius: "8px",
+                border: "1px solid #10b981"
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "8px"
+                }}>
+                  <span style={{ color: "#10b981", fontSize: "16px" }}>✓</span>
+                  <p style={{
+                    margin: 0,
+                    color: "#15803d",
+                    fontSize: "14px",
+                    fontWeight: "600"
+                  }}>
+                    Tracking Info Loaded
+                  </p>
+                </div>
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "8px",
+                  marginTop: "8px"
+                }}>
+                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
+                    <strong>📅 Date:</strong> {new Date(pickupDate).toLocaleDateString()}
+                  </p>
+                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
+                    <strong>📍 From:</strong> {sourceLocation}
+                  </p>
+                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
+                    <strong>📍 To:</strong> {destinationLocation}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Show message if form is disabled due to invalid tracking */}
+            {!trackingInfoFetched && trackingNumber && !fetchingTracking && (
+              <div style={{
+                marginBottom: "16px",
+                padding: "14px 18px",
+                background: "#fef2f2",
+                borderRadius: "8px",
+                border: "1px solid #fca5a5"
+              }}>
+                <p style={{
+                  margin: 0,
+                  color: "#991b1b",
+                  fontSize: "14px",
+                  fontWeight: "600"
+                }}>
+                  🔒 Form Disabled - Invalid Tracking Number
+                </p>
+                <p style={{
+                  margin: "6px 0 0 0",
+                  color: "#7f1d1d",
+                  fontSize: "13px"
+                }}>
+                  Please enter a valid tracking number or change the tracking number above.
+                </p>
+              </div>
+            )}
+
+            {/* Item Name and Category */}
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(2, 1fr)", 
+              gap: "16px",
+              marginBottom: "16px"
+            }}>
+              <div>
+                <label style={{
+                  display: "block",
+                  color: "#374151",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  marginBottom: "6px"
+                }}>
+                  Item Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Black iPhone 13"
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  required
+                  disabled={!trackingInfoFetched || fetchingTracking}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    color: "#111827",
+                    boxSizing: "border-box",
+                    outline: "none",
+                    cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#5865f2";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#d1d5db";
+                    e.target.style.boxShadow = "none";
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{
+                  display: "block",
+                  color: "#374151",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  marginBottom: "6px"
+                }}>
+                  Item Category *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Electronics, Clothing"
+                  value={productCategory}
+                  onChange={(e) => setProductCategory(e.target.value)}
+                  required
+                  disabled={!trackingInfoFetched || fetchingTracking}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    color: "#111827",
+                    boxSizing: "border-box",
+                    outline: "none",
+                    cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#5865f2";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#d1d5db";
+                    e.target.style.boxShadow = "none";
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Description */}
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                color: "#374151",
+                fontSize: "14px",
+                fontWeight: "500",
+                marginBottom: "6px"
+              }}>
+                Your Description
+              </label>
+              <textarea
+                placeholder="Describe the item... (AI will analyze image if provided)"
+                value={courierDescription}
+                onChange={(e) => setCourierDescription(e.target.value)}
+                disabled={!trackingInfoFetched || fetchingTracking}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  color: "#111827",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  minHeight: "100px",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                  cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#5865f2";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.boxShadow = "none";
+                }}
+              />
+            </div>
+
+            {/* Image Upload */}
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{
+                display: "block",
+                color: "#374151",
+                fontSize: "14px",
+                fontWeight: "500",
+                marginBottom: "6px"
+              }}>
+                Item Image
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                disabled={!trackingInfoFetched || fetchingTracking}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  color: "#111827",
+                  cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "pointer",
+                  boxSizing: "border-box"
+                }}
+              />
+              {preview && (
+                <div style={{
+                  marginTop: "12px",
+                  display: "flex",
+                  justifyContent: "center"
+                }}>
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    style={{
+                      maxWidth: "300px",
+                      maxHeight: "300px",
+                      borderRadius: "8px",
+                      border: "1px solid #e5e7eb"
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Error and Success Messages */}
+            {error && (
+              <div style={{
+                padding: "12px 16px",
+                background: "#fef2f2",
+                borderRadius: "8px",
+                border: "1px solid #fecaca",
+                marginBottom: "16px"
+              }}>
+                <p style={{
+                  color: "#dc2626",
+                  fontSize: "14px",
+                  margin: 0
+                }}>
+                  ⚠️ {error}
+                </p>
+              </div>
+            )}
+
+            {success && (
+              <div style={{
+                padding: "12px 16px",
+                background: "#f0fdf4",
+                borderRadius: "8px",
+                border: "1px solid #bbf7d0",
+                marginBottom: "16px"
+              }}>
+                <p style={{
+                  color: "#16a34a",
+                  fontSize: "14px",
+                  margin: 0
+                }}>
+                  ✓ {success}
+                </p>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading || !trackingInfoFetched || fetchingTracking}
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: (loading || !trackingInfoFetched || fetchingTracking) ? "#d1d5db" : "#5865f2",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: "600",
+                cursor: (loading || !trackingInfoFetched || fetchingTracking) ? "not-allowed" : "pointer",
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={(e) => {
+                if (!loading && trackingInfoFetched && !fetchingTracking) {
+                  e.target.style.background = "#4f5bd5";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading && trackingInfoFetched && !fetchingTracking) {
+                  e.target.style.background = "#5865f2";
+                }
+              }}
+            >
+              {loading ? "Uploading..." : "Upload Found Item"}
+            </button>
+          </form>
+
+        </div>
+        ) : (
+          // My Items Tab
+          <div>
+            {loadingItems ? (
+              <div style={{
+                background: "#ffffff",
+                borderRadius: "12px",
+                padding: "60px",
+                border: "1px solid #e5e7eb",
+                textAlign: "center"
+              }}>
+                <div style={{
+                  width: "48px",
+                  height: "48px",
+                  border: "4px solid #e5e7eb",
+                  borderTop: "4px solid #5865f2",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                  margin: "0 auto 16px"
+                }}></div>
+                <p style={{ color: "#6b7280", fontSize: "15px", fontWeight: "500" }}>
+                  Loading your items...
+                </p>
+              </div>
+            ) : myItems.length === 0 ? (
+              <div style={{
+                background: "#ffffff",
+                borderRadius: "12px",
+                padding: "60px 20px",
+                border: "2px dashed #d1d5db",
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: "64px", marginBottom: "16px" }}>📦</div>
+                <h3 style={{ color: "#111827", marginBottom: "8px", fontSize: "18px", fontWeight: "700" }}>
+                  No Items Yet
+                </h3>
+                <p style={{ color: "#6b7280", fontSize: "14px", maxWidth: "400px", margin: "0 auto 20px" }}>
+                  You haven't uploaded any found items yet. Click "Upload Item" tab to add your first item.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "16px" }}>
+                {myItems.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "#ffffff",
+                      border: "2px solid #e5e7eb",
+                      borderRadius: "16px",
+                      padding: "20px",
+                      transition: "all 0.3s",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)"
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: "20px", alignItems: "start", position: "relative" }}>
+                      {/* Delete Button - Top Left */}
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        style={{
+                          position: "absolute",
+                          top: "-8px",
+                          left: "-8px",
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "50%",
+                          background: "#fef2f2",
+                          color: "#dc2626",
+                          border: "2px solid #fecaca",
+                          cursor: "pointer",
+                          fontSize: "16px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: "bold",
+                          transition: "all 0.2s",
+                          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                          zIndex: 10
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = "#dc2626";
+                          e.target.style.color = "#ffffff";
+                          e.target.style.transform = "scale(1.1)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = "#fef2f2";
+                          e.target.style.color = "#dc2626";
+                          e.target.style.transform = "scale(1)";
+                        }}
+                        title="Delete item"
+                      >
+                        ×
+                      </button>
+
+                      {item.product_image && item.product_image !== "no_image.jpg" ? (
+                        <img
+                          src={`http://localhost:8000/${item.product_image}`}
+                          alt={item.product_name}
+                          style={{
+                            width: "140px",
+                            height: "140px",
+                            objectFit: "cover",
+                            borderRadius: "12px",
+                            flexShrink: 0,
+                            border: "2px solid #e5e7eb",
+                            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)"
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: "140px",
+                          height: "140px",
+                          borderRadius: "12px",
+                          flexShrink: 0,
+                          border: "2px solid #e5e7eb",
+                          background: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "48px"
+                        }}>
+                          📦
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "12px" }}>
+                          <h3 style={{ margin: 0, color: "#111827", fontSize: "18px", fontWeight: "700" }}>
+                            {item.product_name}
+                          </h3>
+                          <span style={{
+                            background: item.claimed === "claimed" ? "#10b981" : "#f59e0b",
+                            color: "white",
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            fontWeight: "700",
+                            fontSize: "12px",
+                            flexShrink: 0,
+                            marginLeft: "16px"
+                          }}>
+                            {item.claimed === "claimed" ? "✓ Claimed" : "📌 Unclaimed"}
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0", color: "#6b7280", fontSize: "13px" }}>
+                          <span style={{ fontWeight: "500" }}>Category:</span>{" "}
+                          <span style={{
+                            background: "#eef2ff",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            color: "#5865f2",
+                            fontSize: "12px",
+                            fontWeight: "500"
+                          }}>
+                            {item.product_category}
+                          </span>
+                        </p>
+                        {item.tracking_number && (
+                          <p style={{ margin: "4px 0", color: "#6b7280", fontSize: "13px" }}>
+                            <span style={{ fontWeight: "500" }}>Tracking:</span> {item.tracking_number}
+                          </p>
+                        )}
+                        {item.source_location && item.destination_location && (
+                          <p style={{ margin: "4px 0", color: "#6b7280", fontSize: "13px" }}>
+                            <span style={{ fontWeight: "500" }}>Route:</span> {item.source_location} → {item.destination_location}
+                          </p>
+                        )}
+                        {item.courier_description_user && (
+                          <p style={{ margin: "8px 0", color: "#374151", fontSize: "13px", lineHeight: "1.5" }}>
+                            <span style={{ fontWeight: "600" }}>Your Description:</span> {item.courier_description_user}
+                          </p>
+                        )}
+                        {item.courier_description_ai && (
+                          <div style={{ marginTop: "10px", padding: "10px 12px", background: "#f0f9ff", borderRadius: "6px", borderLeft: "3px solid #3b82f6" }}>
+                            <p style={{ margin: 0, color: "#1e40af", fontSize: "12px", lineHeight: "1.5" }}>
+                              <span style={{ fontWeight: "600" }}>🤖 AI Description:</span>{" "}
+                              {expandedDescriptions[item.id] 
+                                ? item.courier_description_ai
+                                : `${item.courier_description_ai.substring(0, 100)}${item.courier_description_ai.length > 100 ? '...' : ''}`
+                              }
+                            </p>
+                            {item.courier_description_ai.length > 100 && (
+                              <button
+                                onClick={() => setExpandedDescriptions(prev => ({
+                                  ...prev,
+                                  [item.id]: !prev[item.id]
+                                }))}
+                                style={{
+                                  marginTop: "6px",
+                                  padding: "4px 8px",
+                                  background: "transparent",
+                                  color: "#2563eb",
+                                  border: "1px solid #93c5fd",
+                                  borderRadius: "4px",
+                                  fontSize: "11px",
+                                  fontWeight: "600",
+                                  cursor: "pointer",
+                                  transition: "all 0.2s"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = "#dbeafe";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = "transparent";
+                                }}
+                              >
+                                {expandedDescriptions[item.id] ? "Show less ▲" : "Show more ▼"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {item.claimed === "claimed" && item.claimed_by && (
+                          <div style={{ marginTop: "10px", padding: "12px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                            <p style={{ margin: 0, color: "#15803d", fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>
+                              ✓ Claimed by Customer
+                            </p>
+                            <p style={{ margin: 0, color: "#166534", fontSize: "12px" }}>
+                              <strong>Name:</strong> {item.claimed_by.fullname}
+                            </p>
+                            <p style={{ margin: 0, color: "#166534", fontSize: "12px" }}>
+                              <strong>Email:</strong> {item.claimed_by.email}
+                            </p>
+                            <p style={{ margin: 0, color: "#166534", fontSize: "11px", marginTop: "4px" }}>
+                              Claimed on: {new Date(item.claimed_at).toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          {error && <div className="error">{error}</div>}
-          {success && <div className="success">{success}</div>}
-          <button type="submit" className="btn" disabled={loading}>
-            {loading ? "Uploading..." : "Upload Overgood"}
-          </button>
-        </form>
-        <p style={{ 
-          marginTop: "24px", 
-          color: "#a0a0b0", 
-          fontSize: "14px",
-          lineHeight: "1.6",
-          padding: "16px",
-          background: "rgba(88, 101, 242, 0.1)",
-          borderRadius: "12px",
-          border: "1px solid rgba(88, 101, 242, 0.2)"
-        }}>
-          💡 <strong style={{ color: "#d1d1d6" }}>Quick Entry:</strong> You can now upload items with just the name and category! 
-          Add descriptions and images later if available. AI will analyze images automatically when provided. 
-          <strong style={{ display: "block", marginTop: "8px" }}>Tracking info helps customers find items faster.</strong>
-        </p>
+        )}
       </div>
+
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

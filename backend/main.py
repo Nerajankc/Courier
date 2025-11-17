@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import users, requests, couriers
+from backend.routers import users, search, couriers
 
 app = FastAPI()
 
@@ -15,7 +15,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(users.router, prefix="/users", tags=["Users"])
-app.include_router(requests.router, prefix="/requests", tags=["Requests"])
+app.include_router(search.router, prefix="/requests", tags=["Search"])
 app.include_router(couriers.router, prefix="/couriers", tags=["Couriers"])
 
 @app.get("/")

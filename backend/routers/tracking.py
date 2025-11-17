@@ -2,8 +2,25 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend import models, schemas
 from backend.auth import get_db
+import json
 
 router = APIRouter()
+
+# Load routes to get available locations
+def get_available_locations():
+    """Get all unique locations from routes.json"""
+    try:
+        with open("routes.json", "r") as f:
+            routes_data = json.load(f)
+        
+        locations = set()
+        for route in routes_data.get("routes", []):
+            for stop in route.get("stops", []):
+                locations.add(stop)
+        
+        return sorted(list(locations))
+    except Exception:
+        return []
 
 @router.post("/register", response_model=schemas.TrackingInfoResponse, status_code=status.HTTP_201_CREATED)
 def register_tracking(
@@ -64,6 +81,35 @@ def get_all_tracking(
 ):
     """Get all tracking numbers"""
     return db.query(models.TrackingInfo).all()
+
+@router.get("/locations/all", response_model=list[str])
+def get_locations():
+    """Get all available locations from routes"""
+    return get_available_locations()
+
+@router.get("/locations/destinations/{source_location}")
+def get_valid_destinations(source_location: str):
+    """Get valid destination locations for a given source location"""
+    try:
+        with open("routes.json", "r") as f:
+            routes_data = json.load(f)
+        
+        valid_destinations = set()
+        
+        # Find all routes that contain the source location
+        for route in routes_data.get("routes", []):
+            stops = route.get("stops", [])
+            
+            # Check if source is in this route
+            if source_location in stops:
+                source_index = stops.index(source_location)
+                # Add all stops AFTER the source as valid destinations
+                for i in range(source_index + 1, len(stops)):
+                    valid_destinations.add(stops[i])
+        
+        return sorted(list(valid_destinations))
+    except Exception:
+        return []
 
 @router.delete("/{tracking_number}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tracking(

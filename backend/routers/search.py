@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from backend import models, schemas
 from backend.auth import get_db, get_current_user
-from backend.gemini_service import match_product_description, conversational_search
+from backend.gemini_service import match_product_with_conversation, conversational_search, analyze_product_image
+from typing import Optional
+import json
 
 router = APIRouter()
 
@@ -34,13 +36,14 @@ def search_products(
         db.add(db_request)
         db.commit()
         db.refresh(db_request)
-    except Exception as e:
+    except Exception:
         db.rollback()
         # Log error but continue with search
-        print(f"Error saving request to database: {e}")
     
-    # Get all courier products
-    all_products = db.query(models.CourierData).all()
+    # Get all unclaimed courier products
+    all_products = db.query(models.CourierData).filter(
+        models.CourierData.claimed == "unclaimed"
+    ).all()
     
     if not all_products:
         return schemas.SearchResponse(matches=[], total_found=0)
@@ -50,13 +53,15 @@ def search_products(
         {
             "id": p.id,
             "user_desc": p.courier_description_user,
-            "ai_desc": p.courier_description_ai or ""
+            "ai_desc": p.courier_description_ai or "",
+            "image_desc": p.image_description or ""
         }
         for p in all_products
     ]
     
-    # Use Gemini to match products
-    matches = match_product_description(request.search_description, product_descriptions)
+    # Use AI with conversation context (single message in this case)
+    conversation = [{"role": "user", "content": request.search_description}]
+    matches = match_product_with_conversation(conversation, product_descriptions)
     
     # Get full product details for matched products
     matched_products = []
@@ -133,14 +138,17 @@ def chat_search(
             detail="Only find users can search for products"
         )
     
-    # Get all courier products and prepare them for filtering
-    all_products = db.query(models.CourierData).all()
+    # Get all unclaimed courier products for filtering
+    all_products = db.query(models.CourierData).filter(
+        models.CourierData.claimed == "unclaimed"
+    ).all()
     
     product_data = [
         {
             "id": p.id,
             "user_desc": p.courier_description_user,
             "ai_desc": p.courier_description_ai or "",
+            "image_desc": p.image_description or "",
             "tracking_number": p.tracking_number,
             "pickup_date": p.pickup_date,
             "source_location": p.source_location,
@@ -197,3 +205,162 @@ def chat_search(
         result["matches"] = matched_products
     
     return schemas.ChatResponse(**result)
+
+@router.post("/chat-with-image", response_model=schemas.ChatResponse)
+async def chat_search_with_image(
+    message: str = Form(""),
+    tracking_number: str = Form(""),
+    conversation_history: str = Form("[]"),
+    search_image: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Conversational search with image upload for finding lost items"""
+    if current_user.type != "find":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only find users can search for products"
+        )
+    
+    # Parse conversation history
+    try:
+        conv_history = json.loads(conversation_history)
+    except:
+        conv_history = []
+    
+    # Analyze the uploaded image
+    try:
+        image_data = await search_image.read()
+        image_description = analyze_product_image(image_data)
+        
+        # Combine text message with image description
+        combined_message = message
+        if message:
+            combined_message = f"{message}\n\nImage analysis: {image_description}"
+        else:
+            combined_message = f"Customer uploaded an image. Analysis: {image_description}"
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to analyze image: {str(e)}"
+        )
+    
+    # Get all unclaimed courier products for filtering
+    all_products = db.query(models.CourierData).filter(
+        models.CourierData.claimed == "unclaimed"
+    ).all()
+    
+    product_data = [
+        {
+            "id": p.id,
+            "user_desc": p.courier_description_user,
+            "ai_desc": p.courier_description_ai or "",
+            "image_desc": p.image_description or "",
+            "tracking_number": p.tracking_number,
+            "pickup_date": p.pickup_date,
+            "source_location": p.source_location,
+            "destination_location": p.destination_location,
+        }
+        for p in all_products
+    ]
+    
+    # Try to auto-fetch tracking info if tracking number is provided
+    tracking_info = {
+        "tracking_number": tracking_number if tracking_number else None,
+        "pickup_date": None,
+        "source_location": None,
+        "destination_location": None,
+    }
+    
+    # If tracking number is provided, look it up
+    if tracking_number:
+        db_tracking = db.query(models.TrackingInfo).filter(
+            models.TrackingInfo.tracking_number == tracking_number
+        ).first()
+        
+        if db_tracking:
+            tracking_info = {
+                "tracking_number": db_tracking.tracking_number,
+                "pickup_date": db_tracking.pickup_date,
+                "source_location": db_tracking.source_location,
+                "destination_location": db_tracking.destination_location,
+            }
+    
+    # Get conversational response with the combined message (including image description)
+    result = conversational_search(
+        combined_message,
+        conv_history,
+        tracking_info,
+        product_data
+    )
+    
+    # If we have matches, get full product details
+    if result.get("matches"):
+        matched_products = []
+        for match in result["matches"]:
+            product = db.query(models.CourierData).filter(
+                models.CourierData.id == match["product_id"]
+            ).first()
+            if product:
+                matched_products.append(schemas.ProductMatch(
+                    product_id=match["product_id"],
+                    match_score=match["match_score"],
+                    reason=match["reason"],
+                    product=product
+                ))
+        result["matches"] = matched_products
+    
+    return schemas.ChatResponse(**result)
+
+@router.post("/claim/{product_id}")
+def claim_product(
+    product_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Mark a product as claimed by the current user"""
+    if current_user.type != "find":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only find users can claim products"
+        )
+    
+    # Get the product
+    product = db.query(models.CourierData).filter(
+        models.CourierData.id == product_id
+    ).first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    # Check if already claimed
+    if product.claimed == "claimed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This item has already been claimed"
+        )
+    
+    # Update claim status
+    from datetime import datetime
+    product.claimed = "claimed"
+    product.claimed_by_user_id = current_user.id
+    product.claimed_at = datetime.utcnow()
+    
+    try:
+        db.commit()
+        db.refresh(product)
+        return {
+            "message": "Item claimed successfully! Our agents will contact you shortly.",
+            "product_id": product_id,
+            "claimed_at": product.claimed_at
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to claim product: {str(e)}"
+        )

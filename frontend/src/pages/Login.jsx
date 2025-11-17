@@ -72,11 +72,6 @@ function Login() {
         <div className="link">
           Don't have an account? <Link to="/register">Register here</Link>
         </div>
-        <div className="link" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
-          <Link to="/admin" style={{ color: "#a0a0b0", fontSize: "13px" }}>
-            🔧 Admin Panel
-          </Link>
-        </div>
       </div>
     </div>
   );

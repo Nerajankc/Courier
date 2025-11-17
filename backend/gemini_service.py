@@ -27,137 +27,182 @@ def analyze_product_image(image_data: bytes) -> str:
         return "AI Description: Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
     
     try:
-        # Use Gemini Pro Vision for image analysis
-        model = genai.GenerativeModel('gemini-pro')
-        
         # Convert bytes to PIL Image
         image = Image.open(io.BytesIO(image_data))
         
-        prompt = """Analyze this product image and provide a detailed description. 
-        Include: product name, color, size, shape, material, any visible text, brand logos, 
-        unique features, and condition. Be specific and detailed as this will be used to match 
-        lost products with found items."""
+        prompt = """Analyze this product image and provide a detailed description in the following format:
+
+Type: [category, e.g., laptop, phone, bag, backpack, etc.]
+Brand: [if visible, otherwise "Unknown"]
+Color: [primary color(s) and any secondary colors]
+Approximate Size: [dimensions or relative size description]
+Estimated Weight: [light/medium/heavy or approximate weight]
+Distinguishing Features:
+- [Feature 1: e.g., scratches, dents, logos, stickers]
+- [Feature 2: e.g., unique markings, serial numbers visible]
+- [Feature 3: e.g., custom modifications, accessories attached]
+- [Feature 4: e.g., wear patterns, discoloration]
+- [Feature 5: e.g., text/writing visible]
+- [Feature 6: e.g., any other unique identifiers]
+- [Feature 7: e.g., additional notable characteristics]
+Condition: [new/like new/good/fair/worn/damaged - with brief reason]
+
+Be specific and detailed about identifying features. List 5-8 distinguishing features."""
         
+        # Use Gemini 2.5 Flash - stable model for multimodal content
+        model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content([prompt, image])
         return response.text
     except Exception as e:
         return f"AI Description Error: {str(e)}"
 
-def match_product_description(search_description: str, product_descriptions: list) -> list:
-    """Use Gemini to match search description with product descriptions"""
+def match_product_with_conversation(conversation_history: list, product_descriptions: list) -> list:
+    """Use Gemini AI to intelligently match products based on full conversation context"""
     if not GEMINI_API_KEY:
-        # Fallback to simple keyword matching if API key not configured
-        matches = []
-        for desc in product_descriptions:
-            combined_desc = f"{desc['user_desc']} {desc['ai_desc']}".lower()
-            search_lower = search_description.lower()
-            keywords = search_lower.split()
-            matches_found = sum(1 for keyword in keywords if keyword in combined_desc)
-            score = min(100, (matches_found / len(keywords)) * 100) if keywords else 0
-            if score >= 50:
-                matches.append({
-                    "product_id": desc['id'],
-                    "match_score": int(score),
-                    "reason": "Keyword match (Gemini API not configured)"
-                })
-        return sorted(matches, key=lambda x: x['match_score'], reverse=True)
+        return []
+    
+    if not product_descriptions:
+        return []
     
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
-        # Format product descriptions for comparison (handle empty descriptions)
-        products_text = "\n\n".join([
-            f"Product {i+1}:\nUser Description: {desc['user_desc'] or 'Not provided'}\nAI Description: {desc['ai_desc'] or 'Not available'}"
-            for i, desc in enumerate(product_descriptions)
+        # Build conversation context
+        conversation_text = "\n".join([
+            f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
+            for msg in conversation_history
         ])
         
-        prompt = f"""You are a product matching system. Compare the following search description 
-        with the provided product descriptions and return a JSON array with match scores (0-100) 
-        and brief reasoning for each product.
-
-        Search Description: {search_description}
-
-        Available Products:
+        # Format all products with their descriptions
+        # Combine courier description and AI analysis into one complete description
+        products_list = []
+        for idx, desc in enumerate(product_descriptions):
+            # Merge user description, AI description, and image description
+            full_description = []
+            if desc.get('user_desc'):
+                full_description.append(desc['user_desc'])
+            if desc.get('ai_desc'):
+                full_description.append(desc['ai_desc'])
+            if desc.get('image_desc'):
+                full_description.append(desc['image_desc'])
+            
+            combined_desc = ' | '.join(full_description) if full_description else 'No description available'
+            
+            product_info = f"""Product ID: {desc['id']}
+Description: {combined_desc}"""
+            products_list.append(product_info)
+        
+        products_text = "\n\n---\n\n".join(products_list)
+        
+                prompt = f"""You are an intelligent lost-and-found matching system. Analyze the ENTIRE conversation to understand what the user is looking for, then match it against available products.
+        
+        CONVERSATION HISTORY:
+        {conversation_text}
+        
+        AVAILABLE PRODUCTS (already filtered by date and route):
         {products_text}
-
-        Return JSON format:
+        
+        TASK:
+        Analyze the full conversation to understand what the user is looking for.
+        Consider ALL details they've provided:
+        - Text descriptions
+        - Uploaded images and their analyses
+        - Colors, sizes, brands, features, etc.
+        
+        Each product's description combines multiple sources (courier reports, AI analysis, user images).
+        Match the user's requirements against these complete product descriptions.
+        
+        Return ONLY valid JSON in this exact format:
         [
-            {{"product_id": 1, "match_score": 85, "reason": "Brief explanation"}},
-            {{"product_id": 2, "match_score": 45, "reason": "Brief explanation"}}
+          {{"product_id": <id>, "match_score": <0-100>, "reason": "Brief explanation of why it matches"}},
+          ...
         ]
         
-        Only include products with match_score >= 50. Return only valid JSON."""
+        Rules:
+        - Only include products with match_score >= 40
+        - Higher scores for more specific matches
+        - Consider ALL user messages and image descriptions
+        - If nothing matches well, return empty array []
+        - Return ONLY the JSON array, no other text"""
+                
+                response = model.generate_content(prompt)
         
-        response = model.generate_content(prompt)
+        response_text = response.text.strip()
         
-        # Parse JSON response
-        import json
-        try:
-            # Extract JSON from response text
-            response_text = response.text.strip()
-            # Remove markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-            response_text = response_text.strip()
-            
-            matches = json.loads(response_text)
-            return matches
-        except json.JSONDecodeError:
-            # Fallback: create simple matches based on keyword overlap
-            matches = []
-            for i, desc in enumerate(product_descriptions):
-                combined_desc = f"{desc.get('user_desc') or ''} {desc.get('ai_desc') or ''}".lower()
-                search_lower = search_description.lower()
-                # Simple keyword matching
-                keywords = search_lower.split()
-                if combined_desc.strip():  # Only match if there's content
-                    matches_found = sum(1 for keyword in keywords if keyword in combined_desc)
-                    score = min(100, (matches_found / len(keywords)) * 100) if keywords else 0
-                    if score >= 50:
-                        matches.append({
-                            "product_id": desc['id'],
-                            "match_score": int(score),
-                            "reason": "Keyword match found"
+        # Clean up response text
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+        
+        # Remove any leading/trailing whitespace or newlines
+        response_text = response_text.strip()
+        
+        matches = json.loads(response_text)
+        
+                # Validate response format
+                if not isinstance(matches, list):
+                    return []
+                
+                # Ensure each match has required fields
+                valid_matches = []
+                for match in matches:
+                    if isinstance(match, dict) and 'product_id' in match and 'match_score' in match:
+                        valid_matches.append({
+                            "product_id": match['product_id'],
+                            "match_score": int(match['match_score']),
+                            "reason": match.get('reason', 'Match found')
                         })
-            return sorted(matches, key=lambda x: x['match_score'], reverse=True)
-            
-    except Exception as e:
-        # Fallback matching
-        matches = []
-        for desc in product_descriptions:
-            combined_desc = f"{desc.get('user_desc') or ''} {desc.get('ai_desc') or ''}".lower()
-            search_lower = search_description.lower()
-            keywords = search_lower.split()
-            if combined_desc.strip():  # Only match if there's content
-                matches_found = sum(1 for keyword in keywords if keyword in combined_desc)
-                score = min(100, (matches_found / len(keywords)) * 100) if keywords else 0
-                if score >= 50:
-                    matches.append({
-                        "product_id": desc['id'],
-                        "match_score": int(score),
-                        "reason": "Simple keyword match"
-                    })
-        return sorted(matches, key=lambda x: x['match_score'], reverse=True)
+                
+                return sorted(valid_matches, key=lambda x: x['match_score'], reverse=True)
+                
+            except json.JSONDecodeError:
+                return []
+            except Exception:
+                return []
 
 def find_matching_routes(source: str, destination: str) -> list:
     """Find routes that connect source and destination"""
     matching_routes = []
-    source_lower = source.lower()
-    dest_lower = destination.lower()
+    source_lower = source.lower().strip()
+    dest_lower = destination.lower().strip()
     
-    for route in ROUTES:
-        stops_lower = [stop.lower() for stop in route['stops']]
-        regions_lower = [region.lower() for region in route['regions']]
+    # Handle the new routes.json format
+    routes_list = ROUTES.get('routes', []) if isinstance(ROUTES, dict) else ROUTES
+    
+    for route in routes_list:
+        stops = route.get('stops', [])
+        stops_lower = [stop.lower() for stop in stops]
+        
+        # Extract city and state from stops for flexible matching
+        cities = []
+        states = []
+        for stop in stops_lower:
+            parts = stop.split(',')
+            if len(parts) >= 1:
+                cities.append(parts[0].strip())
+            if len(parts) >= 2:
+                states.append(parts[1].strip())
         
         # Check if both source and destination are on the route
-        source_in_stops = any(source_lower in stop or stop in source_lower for stop in stops_lower)
-        dest_in_stops = any(dest_lower in stop or stop in dest_lower for stop in stops_lower)
-        source_in_regions = any(source_lower in region or region in source_lower for region in regions_lower)
-        dest_in_regions = any(dest_lower in region or region in dest_lower for region in regions_lower)
+        # Match against full stop, city name, or state
+        source_match = any(
+            source_lower in stop or stop in source_lower or 
+            source_lower in city or city in source_lower or
+            source_lower in state or state in source_lower
+            for stop, city, state in zip(stops_lower, cities + [''] * len(stops_lower), states + [''] * len(stops_lower))
+            if stop or city or state
+        )
         
-        if (source_in_stops or source_in_regions) and (dest_in_stops or dest_in_regions):
+        dest_match = any(
+            dest_lower in stop or stop in dest_lower or
+            dest_lower in city or city in dest_lower or
+            dest_lower in state or state in dest_lower
+            for stop, city, state in zip(stops_lower, cities + [''] * len(stops_lower), states + [''] * len(stops_lower))
+            if stop or city or state
+        )
+        
+        if source_match and dest_match:
             matching_routes.append(route)
     
     return matching_routes
@@ -176,8 +221,16 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
     # Get all locations on matching routes
     route_locations = set()
     for route in matching_routes:
-        route_locations.update([loc.lower() for loc in route['stops']])
-        route_locations.update([loc.lower() for loc in route['regions']])
+        stops = route.get('stops', [])
+        for stop in stops:
+            stop_lower = stop.lower()
+            route_locations.add(stop_lower)
+            # Also add city and state separately for flexible matching
+            parts = stop_lower.split(',')
+            if len(parts) >= 1:
+                route_locations.add(parts[0].strip())
+            if len(parts) >= 2:
+                route_locations.add(parts[1].strip())
     
     # Filter products by location
     filtered = []
@@ -197,7 +250,8 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
         if source_match or dest_match:
             filtered.append(product)
     
-    # Filter by date if provided (within 7 days window)
+    # Filter by date if provided
+    # Items can only be found AFTER they were picked up, not before
     if pickup_date and filtered:
         try:
             search_date = datetime.strptime(pickup_date, "%Y-%m-%d")
@@ -206,12 +260,16 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
                 if product.get('pickup_date'):
                     try:
                         prod_date = datetime.strptime(product['pickup_date'], "%Y-%m-%d")
-                        # Check if within 7 days window
-                        if abs((search_date - prod_date).days) <= 7:
+                        # Only include items reported on or after the tracking pickup date
+                        # Allow items reported up to 30 days after pickup (reasonable lost-and-found window)
+                        days_diff = (prod_date - search_date).days
+                        if 0 <= days_diff <= 30:
                             date_filtered.append(product)
                     except:
+                        # If date parsing fails, include the product to be safe
                         date_filtered.append(product)
                 else:
+                    # If product has no date, include it
                     date_filtered.append(product)
             return date_filtered if date_filtered else filtered
         except:
@@ -222,20 +280,14 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
 def conversational_search(message: str, conversation_history: list, tracking_info: dict, products: list) -> dict:
     """Handle conversational search with tracking information"""
     
-    print(f"DEBUG conversational_search called with:")
-    print(f"  message: {message}")
-    print(f"  tracking_info: {tracking_info}")
+    # All user input is treated as search criteria to help find their item
+    # Success messages only appear when they claim an item via the frontend button
     
     # Check if we have all tracking info
     has_tracking = tracking_info.get('tracking_number')
     has_date = tracking_info.get('pickup_date')
     has_source = tracking_info.get('source_location')
     has_dest = tracking_info.get('destination_location')
-    
-    print(f"  has_tracking: {has_tracking}")
-    print(f"  has_date: {has_date}")
-    print(f"  has_source: {has_source}")
-    print(f"  has_dest: {has_dest}")
     
     # If no tracking number, ask for it
     if not has_tracking:
@@ -271,17 +323,22 @@ def conversational_search(message: str, conversation_history: list, tracking_inf
             "matches": []
         }
     
-    # Use AI to match the description with filtered products
+    # Use AI to match based on FULL conversation context with filtered products
     product_descriptions = [
         {
             'id': p['id'],
-            'user_desc': p['user_desc'],
-            'ai_desc': p['ai_desc']
+            'user_desc': p.get('user_desc'),
+            'ai_desc': p.get('ai_desc'),
+            'image_desc': p.get('image_desc', '')
         }
         for p in filtered_products
     ]
     
-    matches = match_product_description(message, product_descriptions)
+    # Add the current message to conversation history for AI matching
+    full_conversation = conversation_history + [{"role": "user", "content": message}]
+    
+    # Pass entire conversation (including current message) to AI for intelligent matching
+    matches = match_product_with_conversation(full_conversation, product_descriptions)
     
     if matches:
         intro = f"Great news! I found {len(matches)} potential match(es) for your tracking number {tracking_info['tracking_number']}. "
