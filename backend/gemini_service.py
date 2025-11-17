@@ -94,7 +94,7 @@ Description: {combined_desc}"""
         
         products_text = "\n\n---\n\n".join(products_list)
         
-                prompt = f"""You are an intelligent lost-and-found matching system. Analyze the ENTIRE conversation to understand what the user is looking for, then match it against available products.
+        prompt = f"""You are an intelligent lost-and-found matching system. Analyze the ENTIRE conversation to understand what the user is looking for, then match it against available products.
         
         CONVERSATION HISTORY:
         {conversation_text}
@@ -124,8 +124,8 @@ Description: {combined_desc}"""
         - Consider ALL user messages and image descriptions
         - If nothing matches well, return empty array []
         - Return ONLY the JSON array, no other text"""
-                
-                response = model.generate_content(prompt)
+        
+        response = model.generate_content(prompt)
         
         response_text = response.text.strip()
         
@@ -140,26 +140,26 @@ Description: {combined_desc}"""
         
         matches = json.loads(response_text)
         
-                # Validate response format
-                if not isinstance(matches, list):
-                    return []
-                
-                # Ensure each match has required fields
-                valid_matches = []
-                for match in matches:
-                    if isinstance(match, dict) and 'product_id' in match and 'match_score' in match:
-                        valid_matches.append({
-                            "product_id": match['product_id'],
-                            "match_score": int(match['match_score']),
-                            "reason": match.get('reason', 'Match found')
-                        })
-                
-                return sorted(valid_matches, key=lambda x: x['match_score'], reverse=True)
-                
-            except json.JSONDecodeError:
-                return []
-            except Exception:
-                return []
+        # Validate response format
+        if not isinstance(matches, list):
+            return []
+        
+        # Ensure each match has required fields
+        valid_matches = []
+        for match in matches:
+            if isinstance(match, dict) and 'product_id' in match and 'match_score' in match:
+                valid_matches.append({
+                    "product_id": match['product_id'],
+                    "match_score": int(match['match_score']),
+                    "reason": match.get('reason', 'Match found')
+                })
+        
+        return sorted(valid_matches, key=lambda x: x['match_score'], reverse=True)
+        
+    except json.JSONDecodeError:
+        return []
+    except Exception:
+        return []
 
 def find_matching_routes(source: str, destination: str) -> list:
     """Find routes that connect source and destination"""

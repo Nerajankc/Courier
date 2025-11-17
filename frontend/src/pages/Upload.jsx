@@ -381,7 +381,6 @@ function Upload() {
                 placeholder="e.g., 1Z999AA10123456784"
                 value={trackingNumber}
                 onChange={handleTrackingNumberChange}
-                onBlur={handleTrackingNumberBlur}
                 disabled={fetchingTracking}
                 style={{
                   width: "100%",
