@@ -88,8 +88,20 @@ def match_product_with_conversation(conversation_history: list, product_descript
             
             combined_desc = ' | '.join(full_description) if full_description else 'No description available'
             
+            # Add location/date context if available
+            context_parts = []
+            if desc.get('date_found'):
+                context_parts.append(f"Found: {desc['date_found']}")
+            if desc.get('location_found'):
+                context_parts.append(f"Location: {desc['location_found']}")
+            if desc.get('route_info'):
+                context_parts.append(f"Route: {desc['route_info']}")
+            context_info = ' | '.join(context_parts) if context_parts else ''
+            
             product_info = f"""Product ID: {desc['id']}
 Description: {combined_desc}"""
+            if context_info:
+                product_info += f"\n{context_info}"
             products_list.append(product_info)
         
         products_text = "\n\n---\n\n".join(products_list)
@@ -251,19 +263,19 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
             filtered.append(product)
     
     # Filter by date if provided
-    # Items can only be found AFTER they were picked up, not before
+    # pickup_date = when USER's shipment was picked up (from their tracking number)
+    # product['pickup_date'] = when COURIER found the item
+    # Logic: Items can only be found AFTER the user's shipment started, not before
     if pickup_date and filtered:
         try:
-            search_date = datetime.strptime(pickup_date, "%Y-%m-%d")
+            user_shipment_date = datetime.strptime(pickup_date, "%Y-%m-%d")
             date_filtered = []
             for product in filtered:
                 if product.get('pickup_date'):
                     try:
-                        prod_date = datetime.strptime(product['pickup_date'], "%Y-%m-%d")
-                        # Only include items reported on or after the tracking pickup date
-                        # Allow items reported up to 30 days after pickup (reasonable lost-and-found window)
-                        days_diff = (prod_date - search_date).days
-                        if 0 <= days_diff <= 30:
+                        courier_found_date = datetime.strptime(product['pickup_date'], "%Y-%m-%d")
+                        # Only include items found on or after the user's shipment date
+                        if courier_found_date >= user_shipment_date:
                             date_filtered.append(product)
                     except:
                         # If date parsing fails, include the product to be safe
@@ -329,7 +341,10 @@ def conversational_search(message: str, conversation_history: list, tracking_inf
             'id': p['id'],
             'user_desc': p.get('user_desc'),
             'ai_desc': p.get('ai_desc'),
-            'image_desc': p.get('image_desc', '')
+            'image_desc': p.get('image_desc', ''),
+            'date_found': p.get('pickup_date'),
+            'location_found': p.get('source_location'),
+            'route_info': p.get('destination_location')
         }
         for p in filtered_products
     ]

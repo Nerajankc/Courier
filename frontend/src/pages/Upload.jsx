@@ -7,10 +7,9 @@ function Upload() {
   const [productImage, setProductImage] = useState(null);
   const [productName, setProductName] = useState("");
   const [productCategory, setProductCategory] = useState("");
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [pickupDate, setPickupDate] = useState("");
-  const [sourceLocation, setSourceLocation] = useState("");
-  const [destinationLocation, setDestinationLocation] = useState("");
+  const [dateFound, setDateFound] = useState("");
+  const [locationFound, setLocationFound] = useState("");
+  const [routeInfo, setRouteInfo] = useState("");
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -18,8 +17,6 @@ function Upload() {
   const [activeTab, setActiveTab] = useState("upload");
   const [myItems, setMyItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [trackingInfoFetched, setTrackingInfoFetched] = useState(false);
-  const [fetchingTracking, setFetchingTracking] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState({});
   const navigate = useNavigate();
 
@@ -69,50 +66,6 @@ function Upload() {
     }
   };
 
-  const fetchTrackingInfo = async (trackingNum) => {
-    if (!trackingNum.trim()) {
-      setTrackingInfoFetched(false);
-      setPickupDate("");
-      setSourceLocation("");
-      setDestinationLocation("");
-      return;
-    }
-
-    setFetchingTracking(true);
-    try {
-      const response = await api.get(`/tracking/${trackingNum.trim()}`);
-      // Auto-populate fields from tracking info
-      setPickupDate(response.data.pickup_date);
-      setSourceLocation(response.data.source_location);
-      setDestinationLocation(response.data.destination_location);
-      setTrackingInfoFetched(true);
-      setError("");
-    } catch (err) {
-      // Tracking number not found - don't allow upload
-      setTrackingInfoFetched(false);
-      setError("⚠️ Tracking number not registered. You cannot report item with invalid tracking number.");
-    } finally {
-      setFetchingTracking(false);
-    }
-  };
-
-  const handleTrackingNumberChange = (e) => {
-    const value = e.target.value;
-    setTrackingNumber(value);
-    // Clear auto-fetched flag and error when user modifies tracking number
-    if (trackingInfoFetched) {
-      setTrackingInfoFetched(false);
-    }
-    if (error) {
-      setError("");
-    }
-  };
-
-  const handleTrackingNumberBlur = () => {
-    if (trackingNumber.trim()) {
-      fetchTrackingInfo(trackingNumber);
-    }
-  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -140,26 +93,24 @@ function Upload() {
       }
       formData.append("product_name", productName);
       formData.append("product_category", productCategory);
-      if (trackingNumber) formData.append("tracking_number", trackingNumber);
-      if (pickupDate) formData.append("pickup_date", pickupDate);
-      if (sourceLocation) formData.append("source_location", sourceLocation);
-      if (destinationLocation) formData.append("destination_location", destinationLocation);
+      // Couriers report when/where they found the item, not tracking info
+      if (dateFound) formData.append("pickup_date", dateFound);  // backend still uses pickup_date field
+      if (locationFound) formData.append("source_location", locationFound);  // backend uses source_location
+      if (routeInfo) formData.append("destination_location", routeInfo);  // backend uses destination_location
 
       const response = await api.post("/couriers/upload", formData);
 
-      setSuccess(productImage ? "Overgood uploaded successfully! AI description generated." : "Overgood uploaded successfully!");
+      setSuccess(productImage ? "Item uploaded successfully! AI description generated." : "Item uploaded successfully!");
       
       // Reset form
       setCourierDescription("");
       setProductName("");
       setProductCategory("");
-      setTrackingNumber("");
-      setPickupDate("");
-      setSourceLocation("");
-      setDestinationLocation("");
+      setDateFound("");
+      setLocationFound("");
+      setRouteInfo("");
       setProductImage(null);
       setPreview(null);
-      setTrackingInfoFetched(false);
       e.target.reset();
       
       // Refresh items list to update count badge
@@ -366,6 +317,7 @@ function Upload() {
 
             <form onSubmit={handleUpload}>
             {/* Tracking Number Field */}
+            {/* When/Where Item Was Found */}
             <div style={{ marginBottom: "16px" }}>
               <label style={{
                 display: "block",
@@ -374,14 +326,12 @@ function Upload() {
                 fontWeight: "500",
                 marginBottom: "6px"
               }}>
-                Tracking Number (Optional)
+                Date Found (Optional)
               </label>
               <input
-                type="text"
-                placeholder="e.g., 1Z999AA10123456784"
-                value={trackingNumber}
-                onChange={handleTrackingNumberChange}
-                disabled={fetchingTracking}
+                type="date"
+                value={dateFound}
+                onChange={(e) => setDateFound(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
@@ -401,86 +351,85 @@ function Upload() {
                 onBlur={(e) => {
                   e.target.style.borderColor = "#d1d5db";
                   e.target.style.boxShadow = "none";
-                  handleTrackingNumberBlur();
                 }}
               />
-              {fetchingTracking && (
-                <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "12px" }}>
-                  🔄 Fetching tracking info...
-                </p>
-              )}
             </div>
 
-            {/* Show Tracking Info Summary if fetched */}
-            {trackingInfoFetched && (
-              <div style={{
-                marginBottom: "16px",
-                padding: "14px 16px",
-                background: "#f0fdf4",
-                borderRadius: "8px",
-                border: "1px solid #10b981"
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                color: "#374151",
+                fontSize: "14px",
+                fontWeight: "500",
+                marginBottom: "6px"
               }}>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  marginBottom: "8px"
-                }}>
-                  <span style={{ color: "#10b981", fontSize: "16px" }}>✓</span>
-                  <p style={{
-                    margin: 0,
-                    color: "#15803d",
-                    fontSize: "14px",
-                    fontWeight: "600"
-                  }}>
-                    Tracking Info Loaded
-                  </p>
-                </div>
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                  gap: "8px",
-                  marginTop: "8px"
-                }}>
-                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
-                    <strong>📅 Date:</strong> {new Date(pickupDate).toLocaleDateString()}
-                  </p>
-                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
-                    <strong>📍 From:</strong> {sourceLocation}
-                  </p>
-                  <p style={{ margin: 0, color: "#166534", fontSize: "13px" }}>
-                    <strong>📍 To:</strong> {destinationLocation}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Show message if form is disabled due to invalid tracking */}
-            {!trackingInfoFetched && trackingNumber && !fetchingTracking && (
-              <div style={{
-                marginBottom: "16px",
-                padding: "14px 18px",
-                background: "#fef2f2",
-                borderRadius: "8px",
-                border: "1px solid #fca5a5"
-              }}>
-                <p style={{
-                  margin: 0,
-                  color: "#991b1b",
+                Location Found (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., New York, NY or Warehouse B"
+                value={locationFound}
+                onChange={(e) => setLocationFound(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
                   fontSize: "14px",
-                  fontWeight: "600"
-                }}>
-                  🔒 Form Disabled - Invalid Tracking Number
-                </p>
-                <p style={{
-                  margin: "6px 0 0 0",
-                  color: "#7f1d1d",
-                  fontSize: "13px"
-                }}>
-                  Please enter a valid tracking number or change the tracking number above.
-                </p>
-              </div>
-            )}
+                  color: "#111827",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "all 0.2s"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#5865f2";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.boxShadow = "none";
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                color: "#374151",
+                fontSize: "14px",
+                fontWeight: "500",
+                marginBottom: "6px"
+              }}>
+                Route Information (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., Route 66 or NY to LA"
+                value={routeInfo}
+                onChange={(e) => setRouteInfo(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  background: "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  color: "#111827",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "all 0.2s"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#5865f2";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(88, 101, 242, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.boxShadow = "none";
+                }}
+              />
+            </div>
 
             {/* Item Name and Category */}
             <div style={{ 
@@ -505,18 +454,17 @@ function Upload() {
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   required
-                  disabled={!trackingInfoFetched || fetchingTracking}
                   style={{
                     width: "100%",
                     padding: "10px 14px",
-                    background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                    background: "#ffffff",
                     border: "1px solid #d1d5db",
                     borderRadius: "8px",
                     fontSize: "14px",
                     color: "#111827",
                     boxSizing: "border-box",
                     outline: "none",
-                    cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                    cursor: "text"
                   }}
                   onFocus={(e) => {
                     e.target.style.borderColor = "#5865f2";
@@ -545,18 +493,17 @@ function Upload() {
                   value={productCategory}
                   onChange={(e) => setProductCategory(e.target.value)}
                   required
-                  disabled={!trackingInfoFetched || fetchingTracking}
                   style={{
                     width: "100%",
                     padding: "10px 14px",
-                    background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                    background: "#ffffff",
                     border: "1px solid #d1d5db",
                     borderRadius: "8px",
                     fontSize: "14px",
                     color: "#111827",
                     boxSizing: "border-box",
                     outline: "none",
-                    cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                    cursor: "text"
                   }}
                   onFocus={(e) => {
                     e.target.style.borderColor = "#5865f2";
@@ -585,11 +532,10 @@ function Upload() {
                 placeholder="Describe the item... (AI will analyze image if provided)"
                 value={courierDescription}
                 onChange={(e) => setCourierDescription(e.target.value)}
-                disabled={!trackingInfoFetched || fetchingTracking}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
-                  background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                  background: "#ffffff",
                   border: "1px solid #d1d5db",
                   borderRadius: "8px",
                   fontSize: "14px",
@@ -599,7 +545,7 @@ function Upload() {
                   minHeight: "100px",
                   resize: "vertical",
                   fontFamily: "inherit",
-                  cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "text"
+                  cursor: "text"
                 }}
                 onFocus={(e) => {
                   e.target.style.borderColor = "#5865f2";
@@ -627,16 +573,15 @@ function Upload() {
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
-                disabled={!trackingInfoFetched || fetchingTracking}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
-                  background: (!trackingInfoFetched || fetchingTracking) ? "#f3f4f6" : "#ffffff",
+                  background: "#ffffff",
                   border: "1px solid #d1d5db",
                   borderRadius: "8px",
                   fontSize: "14px",
                   color: "#111827",
-                  cursor: (!trackingInfoFetched || fetchingTracking) ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                   boxSizing: "border-box"
                 }}
               />
@@ -700,26 +645,26 @@ function Upload() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || !trackingInfoFetched || fetchingTracking}
+              disabled={loading}
               style={{
                 width: "100%",
                 padding: "12px",
-                background: (loading || !trackingInfoFetched || fetchingTracking) ? "#d1d5db" : "#5865f2",
+                background: loading ? "#d1d5db" : "#5865f2",
                 color: "white",
                 border: "none",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: (loading || !trackingInfoFetched || fetchingTracking) ? "not-allowed" : "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
                 transition: "all 0.2s"
               }}
               onMouseEnter={(e) => {
-                if (!loading && trackingInfoFetched && !fetchingTracking) {
+                if (!loading) {
                   e.target.style.background = "#4f5bd5";
                 }
               }}
               onMouseLeave={(e) => {
-                if (!loading && trackingInfoFetched && !fetchingTracking) {
+                if (!loading) {
                   e.target.style.background = "#5865f2";
                 }
               }}

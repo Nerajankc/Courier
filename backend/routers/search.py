@@ -54,7 +54,10 @@ def search_products(
             "id": p.id,
             "user_desc": p.courier_description_user,
             "ai_desc": p.courier_description_ai or "",
-            "image_desc": p.image_description or ""
+            "image_desc": p.image_description or "",
+            "date_found": p.pickup_date,
+            "location_found": p.source_location,
+            "route_info": p.destination_location
         }
         for p in all_products
     ]
