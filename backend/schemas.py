@@ -120,6 +120,7 @@ class ChatRequest(BaseModel):
     pickup_date: Optional[str] = None
     source_location: Optional[str] = None
     destination_location: Optional[str] = None
+    rejected_product_ids: Optional[List[int]] = []
 
 class ChatResponse(BaseModel):
     message: str

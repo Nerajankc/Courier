@@ -13,6 +13,7 @@ function Search() {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [itemClaimed, setItemClaimed] = useState(false);
+  const [rejectedProductIds, setRejectedProductIds] = useState([]);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -123,11 +124,16 @@ function Search() {
   };
 
   const handleNotMyItem = (productId) => {
-    // Remove this match from the list
+    // Add to rejected list and remove from current matches
+    setRejectedProductIds(prev => [...prev, productId]);
     setMatches(prev => prev.filter(match => match.product_id !== productId));
   };
 
   const handleNoneOfThese = () => {
+    // Add all current matches to rejected list
+    const currentMatchIds = matches.map(m => m.product_id);
+    setRejectedProductIds(prev => [...prev, ...currentMatchIds]);
+    
     // Clear all matches
     setMatches([]);
     setMessages(prev => [
@@ -183,6 +189,7 @@ function Search() {
         formData.append("message", userMessage);
         formData.append("tracking_number", trackingNumber || "");
         formData.append("conversation_history", JSON.stringify(messages));
+        formData.append("rejected_product_ids", JSON.stringify(rejectedProductIds));
         formData.append("search_image", uploadedImage);
         
         response = await api.post("/requests/chat-with-image", formData, {
@@ -199,6 +206,7 @@ function Search() {
           pickup_date: null,
           source_location: null,
           destination_location: null,
+          rejected_product_ids: rejectedProductIds,
         });
       }
 

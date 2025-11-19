@@ -188,7 +188,8 @@ def chat_search(
         request.message,
         conversation_history,
         tracking_info,
-        product_data
+        product_data,
+        request.rejected_product_ids
     )
     
     # If we have matches, get full product details
@@ -214,6 +215,7 @@ async def chat_search_with_image(
     message: str = Form(""),
     tracking_number: str = Form(""),
     conversation_history: str = Form("[]"),
+    rejected_product_ids: str = Form("[]"),
     search_image: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -230,6 +232,12 @@ async def chat_search_with_image(
         conv_history = json.loads(conversation_history)
     except:
         conv_history = []
+    
+    # Parse rejected product IDs
+    try:
+        rejected_ids = json.loads(rejected_product_ids)
+    except:
+        rejected_ids = []
     
     # Analyze the uploaded image
     try:
@@ -295,7 +303,8 @@ async def chat_search_with_image(
         combined_message,
         conv_history,
         tracking_info,
-        product_data
+        product_data,
+        rejected_ids
     )
     
     # If we have matches, get full product details

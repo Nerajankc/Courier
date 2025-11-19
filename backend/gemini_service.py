@@ -56,10 +56,17 @@ Be specific and detailed about identifying features. List 5-8 distinguishing fea
     except Exception as e:
         return f"AI Description Error: {str(e)}"
 
-def match_product_with_conversation(conversation_history: list, product_descriptions: list) -> list:
+def match_product_with_conversation(conversation_history: list, product_descriptions: list, rejected_ids: list = None, is_first_attempt: bool = True) -> list:
     """Use Gemini AI to intelligently match products based on full conversation context"""
     if not GEMINI_API_KEY:
         return []
+    
+    if not product_descriptions:
+        return []
+    
+    # Filter out rejected products
+    if rejected_ids:
+        product_descriptions = [p for p in product_descriptions if p.get('id') not in rejected_ids]
     
     if not product_descriptions:
         return []
@@ -106,6 +113,11 @@ Description: {combined_desc}"""
         
         products_text = "\n\n---\n\n".join(products_list)
         
+        # Set threshold based on whether this is first attempt
+        # First try: Only 100% confident matches
+        # Second try onwards: 60%+ matches are acceptable
+        min_score = 100 if is_first_attempt else 60
+        
         prompt = f"""You are an intelligent lost-and-found matching system. Analyze the ENTIRE conversation to understand what the user is looking for, then match it against available products.
         
         CONVERSATION HISTORY:
@@ -131,10 +143,11 @@ Description: {combined_desc}"""
         ]
         
         Rules:
-        - Only include products with match_score >= 40
+        - {"CRITICAL: Only include products that are PERFECT matches (match_score = 100). Be extremely strict - every detail must align perfectly." if is_first_attempt else "Include products with match_score >= 60. Be reasonable but thorough."}
+        - Be conservative with scores - only give high scores when multiple specific details match
         - Higher scores for more specific matches
         - Consider ALL user messages and image descriptions
-        - If nothing matches well, return empty array []
+        - If nothing matches well enough, return empty array []
         - Return ONLY the JSON array, no other text"""
         
         response = model.generate_content(prompt)
@@ -156,15 +169,17 @@ Description: {combined_desc}"""
         if not isinstance(matches, list):
             return []
         
-        # Ensure each match has required fields
+        # Ensure each match has required fields and meets minimum score
         valid_matches = []
         for match in matches:
             if isinstance(match, dict) and 'product_id' in match and 'match_score' in match:
-                valid_matches.append({
-                    "product_id": match['product_id'],
-                    "match_score": int(match['match_score']),
-                    "reason": match.get('reason', 'Match found')
-                })
+                score = int(match['match_score'])
+                if score >= min_score:
+                    valid_matches.append({
+                        "product_id": match['product_id'],
+                        "match_score": score,
+                        "reason": match.get('reason', 'Match found')
+                    })
         
         return sorted(valid_matches, key=lambda x: x['match_score'], reverse=True)
         
@@ -220,7 +235,7 @@ def find_matching_routes(source: str, destination: str) -> list:
     return matching_routes
 
 def filter_by_route_and_date(products: list, source: str, destination: str, pickup_date: str) -> list:
-    """Filter products based on route proximity and date"""
+    """Filter products based on route proximity and date - Lenient filtering with reasonable buffers"""
     if not source or not destination:
         return products
     
@@ -244,44 +259,48 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
             if len(parts) >= 2:
                 route_locations.add(parts[1].strip())
     
-    # Filter products by location
+    # Filter products by location - More lenient: match if either location matches
     filtered = []
     for product in products:
+        # If product has NO location data, include it - don't let missing data hamper search
         if not product.get('source_location') or not product.get('destination_location'):
-            # Include products without location data
             filtered.append(product)
             continue
         
         prod_source = product['source_location'].lower()
         prod_dest = product['destination_location'].lower()
         
-        # Check if product locations match route
+        # Check if product locations match route - Match if EITHER source OR destination matches
         source_match = any(loc in prod_source or prod_source in loc for loc in route_locations)
         dest_match = any(loc in prod_dest or prod_dest in loc for loc in route_locations)
         
+        # More lenient: Include if either source or destination matches
         if source_match or dest_match:
             filtered.append(product)
     
-    # Filter by date if provided
+    # Filter by date if provided - More lenient with a buffer window
     # pickup_date = when USER's shipment was picked up (from their tracking number)
     # product['pickup_date'] = when COURIER found the item
-    # Logic: Items can only be found AFTER the user's shipment started, not before
+    # Logic: Include items found within a reasonable window (few days before/after)
     if pickup_date and filtered:
         try:
             user_shipment_date = datetime.strptime(pickup_date, "%Y-%m-%d")
             date_filtered = []
             for product in filtered:
-                if product.get('pickup_date'):
-                    try:
-                        courier_found_date = datetime.strptime(product['pickup_date'], "%Y-%m-%d")
-                        # Only include items found on or after the user's shipment date
-                        if courier_found_date >= user_shipment_date:
-                            date_filtered.append(product)
-                    except:
-                        # If date parsing fails, include the product to be safe
+                # If product has NO date data, include it - don't let missing data hamper search
+                if not product.get('pickup_date'):
+                    date_filtered.append(product)
+                    continue
+                    
+                try:
+                    courier_found_date = datetime.strptime(product['pickup_date'], "%Y-%m-%d")
+                    # More lenient: Allow a 3-day buffer before and reasonable window after
+                    # Items can be found a few days before shipment date (data entry errors) or any time after
+                    date_diff = (courier_found_date - user_shipment_date).days
+                    if date_diff >= -3:  # Allow 3 days before, unlimited after
                         date_filtered.append(product)
-                else:
-                    # If product has no date, include it
+                except:
+                    # If date parsing fails, include the product - don't let parsing errors hamper search
                     date_filtered.append(product)
             return date_filtered if date_filtered else filtered
         except:
@@ -289,7 +308,7 @@ def filter_by_route_and_date(products: list, source: str, destination: str, pick
     
     return filtered if filtered else products
 
-def conversational_search(message: str, conversation_history: list, tracking_info: dict, products: list) -> dict:
+def conversational_search(message: str, conversation_history: list, tracking_info: dict, products: list, rejected_product_ids: list = None) -> dict:
     """Handle conversational search with tracking information"""
     
     # All user input is treated as search criteria to help find their item
@@ -352,8 +371,11 @@ def conversational_search(message: str, conversation_history: list, tracking_inf
     # Add the current message to conversation history for AI matching
     full_conversation = conversation_history + [{"role": "user", "content": message}]
     
+    # Determine if this is the first attempt (no previous matches in conversation)
+    is_first_attempt = not any("potential match" in msg.get('content', '').lower() for msg in conversation_history if msg.get('role') == 'assistant')
+    
     # Pass entire conversation (including current message) to AI for intelligent matching
-    matches = match_product_with_conversation(full_conversation, product_descriptions)
+    matches = match_product_with_conversation(full_conversation, product_descriptions, rejected_product_ids, is_first_attempt)
     
     if matches:
         intro = f"Great news! I found {len(matches)} potential match(es) for your tracking number {tracking_info['tracking_number']}. "
@@ -366,10 +388,23 @@ def conversational_search(message: str, conversation_history: list, tracking_inf
             "matches": matches
         }
     else:
-        return {
-            "message": f"I've checked items found along your route ({tracking_info['source_location']} → {tracking_info['destination_location']}) around {tracking_info['pickup_date']}, but nothing closely matches your description yet. Can you provide more details about the item? For example, color, size, brand, or any unique features?",
-            "needs_tracking_info": False,
-            "has_results": False,
-            "matches": []
-        }
+        # Be more conversational and ask for specific details
+        user_messages_count = len([m for m in full_conversation if m.get('role') == 'user'])
+        
+        if user_messages_count <= 2:
+            # First few messages - ask for basic details
+            return {
+                "message": f"I'm looking for items along your route ({tracking_info['source_location']} → {tracking_info['destination_location']}) around {tracking_info['pickup_date']}. To help me find the right match, could you tell me more about your package? For example:\n\n• What type of item is it? (electronics, clothing, documents, etc.)\n• What color is it?\n• What's the approximate size?\n• Any brand names or logos visible?",
+                "needs_tracking_info": False,
+                "has_results": False,
+                "matches": []
+            }
+        else:
+            # Follow-up messages - ask for more specific details
+            return {
+                "message": f"I haven't found a strong match yet. Let me help you narrow it down. Could you provide more specific details? For instance:\n\n• Are there any unique markings, scratches, or distinguishing features?\n• What's the material it's made of?\n• Is there any text, serial numbers, or labels visible?\n• Could you upload a photo if you have one similar to your item?",
+                "needs_tracking_info": False,
+                "has_results": False,
+                "matches": []
+            }
 
